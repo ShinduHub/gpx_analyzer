@@ -14,6 +14,7 @@ import (
 
 var target gpx.Wpt
 var dist *float64
+var debug *bool
 var wg sync.WaitGroup
 var globMinDist = math.MaxFloat64
 var globAbsFileName string
@@ -41,11 +42,15 @@ func scan(file string) {
 		}
 	}
 
-	if minDist <= *dist {
+	if *debug {
 		fmt.Printf("%8.0f m, %s\n", minDist, absFileName)
-	} else if globMinDist > minDist {
-		globMinDist = minDist
-		globAbsFileName = absFileName
+	} else {
+		if minDist <= *dist {
+			fmt.Printf("%8.0f m, %s\n", minDist, absFileName)
+		} else if globMinDist > minDist {
+			globMinDist = minDist
+			globAbsFileName = absFileName
+		}
 	}
 }
 
@@ -55,6 +60,7 @@ func main() {
 	lon := flag.Float64("lon", 0, "longitude of target (East to West)")
 	dist = flag.Float64("dist", 1000, "distance between target and waypoint in meters")
 	root := flag.String("path", ".", "path containing the gpx files (from the executable)")
+	debug = flag.Bool("debug", false, "debug mode (print out all file distances)")
 
 	flag.Parse()
 
@@ -92,10 +98,11 @@ func main() {
 
 	wg.Wait()
 
-	fmt.Println("\nNearest out of dist was:")
-
-	if globMinDist != math.MaxFloat64 {
-		fmt.Printf("%8.0f m, %s", globMinDist, globAbsFileName)
+	if *debug {
+		fmt.Println("\nNearest out of dist was:")
+		if globMinDist != math.MaxFloat64 {
+			fmt.Printf("%8.0f m, %s", globMinDist, globAbsFileName)
+		}
 	}
 
 }
