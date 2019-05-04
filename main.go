@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -63,19 +64,22 @@ func main() {
 	}
 
 	target = gpx.Wpt{Lat: *lat, Lon: *lon}
+
 	var files []string
-	abs, err := filepath.Abs(*root)
-	fmt.Println("searching in", abs, "...")
+	fileCount := 0
+	err := filepath.Walk(*root, func(path string, info os.FileInfo, err error) error {
+		if strings.HasSuffix(path, ".gpx") {
+			files = append(files, path)
+			fileCount++
+		}
+		return nil
+	})
 	if err != nil {
 		panic(err)
 	}
 
-	err = filepath.Walk(*root, func(path string, info os.FileInfo, err error) error {
-		if strings.HasSuffix(path, ".gpx") {
-			files = append(files, path)
-		}
-		return nil
-	})
+	abs, err := filepath.Abs(*root)
+	fmt.Println("searching in", abs, strings.Join([]string{"(", strconv.Itoa(fileCount), " GPX-Files)"}, ""), "...")
 	if err != nil {
 		panic(err)
 	}
@@ -88,7 +92,7 @@ func main() {
 
 	wg.Wait()
 
-	fmt.Println("\nNearest out of Range was:")
+	fmt.Println("\nNearest out of dist was:")
 
 	if globMinDist != math.MaxFloat64 {
 		fmt.Printf("%8.0f m, %s", globMinDist, globAbsFileName)
