@@ -63,7 +63,7 @@ func main() {
 	}
 
 	target = gpx.Wpt{Lat: *lat, Lon: *lon}
-	var files []string;
+	var files []string
 	abs, err := filepath.Abs(*root)
 	fmt.Println("searching in", abs, "...")
 	if err != nil {
@@ -83,10 +83,12 @@ func main() {
 	wg.Add(len(files))
 
 	for _, file := range files {
-		go scan(file);
+		go scan(file)
 	}
 
 	wg.Wait()
+
+	fmt.Println("\nNearest out of Range was:")
 
 	if globMinDist != math.MaxFloat64 {
 		fmt.Printf("%8.0f m, %s", globMinDist, globAbsFileName)
