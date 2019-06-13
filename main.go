@@ -3,29 +3,37 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/ptrv/go-gpx"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/ptrv/go-gpx"
 )
 
+var version = "2.1.0"
 var target gpx.Wpt
 var dist *float64
 var debug *bool
 var wg sync.WaitGroup
 var globMinDist = math.MaxFloat64
 var globAbsFileName string
+var parallel *bool
+var finished int
+var total int
 
+// scans a file given as a string
 func scan(file string) {
-	defer wg.Done()
+	if *parallel {
+		defer wg.Done()
+	}
 	minDist := math.MaxFloat64
 	var gpxFile, err = gpx.ParseFile(file)
 	absFileName, _ := filepath.Abs(file)
 	if err != nil {
-		fmt.Println("Error while parsing the file: ", absFileName)
+		fmt.Println("\rError while parsing the file: ", absFileName)
 		return
 	}
 
@@ -43,15 +51,23 @@ func scan(file string) {
 	}
 
 	if *debug {
-		fmt.Printf("%8.0f m, %s\n", minDist, absFileName)
+		fmt.Printf("\r%8.0f m, %s\n", minDist, absFileName)
 	} else {
 		if minDist <= *dist {
-			fmt.Printf("%8.0f m, %s\n", minDist, absFileName)
+			fmt.Printf("\r%8.0f m, %s\n", minDist, absFileName)
 		} else if globMinDist > minDist {
 			globMinDist = minDist
 			globAbsFileName = absFileName
 		}
 	}
+	if *parallel {
+		finished++
+		printState(finished, total)
+	}
+}
+
+func printState(index int, total int) {
+	fmt.Print("\r", strconv.Itoa(int(math.Round(float64(index)/float64(total)*100.0))), "% scanning...")
 }
 
 func main() {
@@ -60,11 +76,13 @@ func main() {
 	lon := flag.Float64("lon", 0, "longitude of target (East to West)")
 	dist = flag.Float64("dist", 1000, "distance between target and waypoint in meters")
 	root := flag.String("path", ".", "path containing the gpx files (from the executable)")
+	parallel = flag.Bool("parallel", true, "parallel mode (faster, but this eats up your hardware!)")
 	debug = flag.Bool("debug", false, "debug mode (print out all file distances)")
 
 	flag.Parse()
 
 	if len(os.Args) <= 1 {
+		fmt.Print("gpx_analyzer version ", version, "\n\n")
 		flag.PrintDefaults()
 		return
 	}
@@ -85,24 +103,42 @@ func main() {
 	}
 
 	abs, err := filepath.Abs(*root)
-	fmt.Println("searching in", abs, strings.Join([]string{"(", strconv.Itoa(fileCount), " GPX-Files)"}, ""), "...")
+	fmt.Println("\rsearching in", abs, strings.Join([]string{"(", strconv.Itoa(fileCount), " GPX-Files)"}, ""), " parallel =", *parallel, "...")
 	if err != nil {
 		panic(err)
 	}
 
-	wg.Add(len(files))
+	total = len(files)
 
-	for _, file := range files {
-		go scan(file)
+	if *parallel {
+
+		wg.Add(total)
+
+		for _, file := range files {
+			go scan(file)
+		}
+
+		for finished < total {
+			printState(finished, total)
+		}
+		wg.Wait()
+
+	} else {
+
+		for i, file := range files {
+			scan(file)
+			printState(i, total)
+		}
+
 	}
 
-	wg.Wait()
+	fmt.Print("\r")
 
-	if *debug {
-		fmt.Println("\nNearest out of dist was:")
-		if globMinDist != math.MaxFloat64 {
-			fmt.Printf("%8.0f m, %s", globMinDist, globAbsFileName)
-		}
+	if !(*debug) && globMinDist != math.MaxFloat64 {
+
+		fmt.Println("\n\nNearest out of dist was:")
+		fmt.Printf("%8.0f m, %s", globMinDist, globAbsFileName)
+
 	}
 
 }
