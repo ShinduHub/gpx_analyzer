@@ -26,8 +26,52 @@ var parallel *bool
 var finished int
 var total int
 
-// scans a file given as a string
-func scan(file string) {
+// scans a gpx datastructure
+func scan(gpxFile *gpx.Gpx, absFileName string) {
+	if *parallel {
+		defer wg.Done()
+	}
+
+	minDist := math.MaxFloat64
+
+	for _, track := range gpxFile.Tracks {
+		for _, segment := range track.Segments {
+			for _, waypoint := range segment.Waypoints {
+				currDist := waypoint.Distance2D(&target)
+				if minDist > currDist {
+					minDist = currDist
+				}
+			}
+		}
+	}
+
+	if minDist == math.MaxFloat64 {
+		fmt.Println("\r[Warning] file: ", absFileName, " has no waypoints")
+		return
+	}
+
+	if *debug {
+		fmt.Printf("\r%8.0f m, %s\n", minDist, absFileName)
+		printState(finished, total)
+	}
+
+	if minDist <= *dist {
+		if globInnerMinDist > minDist {
+			globInnerMinDist = minDist
+			globInnerMinDistAbsFileName = absFileName
+		}
+		fmt.Printf("\r%8.0f m, %s\n", minDist, absFileName)
+		printState(finished, total)
+	} else if globOuterMinDist > minDist {
+		globOuterMinDist = minDist
+		globOuterMinDistAbsFileName = absFileName
+	}
+
+	finished++
+}
+
+// scans a gpx datastructure
+/*func scan(file string) {
 	if *parallel {
 		defer wg.Done()
 	}
@@ -74,7 +118,7 @@ func scan(file string) {
 		finished++
 		printState(finished, total)
 	}
-}
+}*/
 
 func printState(index int, total int) {
 	fmt.Print("\r")
@@ -114,7 +158,7 @@ func main() {
 	}
 
 	abs, err := filepath.Abs(*root)
-	fmt.Println("\rsearching in", abs, strings.Join([]string{"(", strconv.Itoa(fileCount), " GPX-Files)"}, ""), " parallel =", *parallel, "...")
+	fmt.Println("\rsearching in", abs, strings.Join([]string{"(", strconv.Itoa(fileCount), " GPX-Files)"}, ""), " parallel =", *parallel, ":")
 	if err != nil {
 		panic(err)
 	}
@@ -126,18 +170,28 @@ func main() {
 		wg.Add(total)
 
 		for _, file := range files {
-			go scan(file)
-		}
-
-		for finished < total {
-			printState(finished, total)
+			absFileName, _ := filepath.Abs(file)
+			var gpxFile, err = gpx.ParseFile(file)
+			if err != nil {
+				fmt.Println("\r[Error] while parsing the file: ", absFileName)
+				wg.Done()
+				finished++
+				continue
+			}
+			go scan(gpxFile, absFileName)
 		}
 		wg.Wait()
 
 	} else {
 
 		for i, file := range files {
-			scan(file)
+			absFileName, _ := filepath.Abs(file)
+			var gpxFile, err = gpx.ParseFile(file)
+			if err != nil {
+				fmt.Println("\r[Error] while parsing the file: ", absFileName)
+				continue
+			}
+			scan(gpxFile, absFileName)
 			printState(i, total)
 		}
 
