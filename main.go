@@ -18,8 +18,10 @@ var target gpx.Wpt
 var dist *float64
 var debug *bool
 var wg sync.WaitGroup
-var globMinDist = math.MaxFloat64
-var globAbsFileName string
+var globInnerMinDist = math.MaxFloat64
+var globOuterMinDist = math.MaxFloat64
+var globInnerMinDistAbsFileName string
+var globOuterMinDistAbsFileName string
 var parallel *bool
 var finished int
 var total int
@@ -33,33 +35,41 @@ func scan(file string) {
 	var gpxFile, err = gpx.ParseFile(file)
 	absFileName, _ := filepath.Abs(file)
 	if err != nil {
-		fmt.Println("\rError while parsing the file: ", absFileName)
+		fmt.Println("\r[Error] while parsing the file: ", absFileName)
 		return
 	}
 
 	for _, track := range gpxFile.Tracks {
 		for _, segment := range track.Segments {
 			for _, waypoint := range segment.Waypoints {
-
 				currDist := waypoint.Distance2D(&target)
 				if minDist > currDist {
 					minDist = currDist
 				}
-
 			}
 		}
 	}
 
+	if minDist == math.MaxFloat64 {
+		fmt.Println("\r[Warning] file: ", absFileName, " has no waypoints")
+		return
+	}
+
 	if *debug {
 		fmt.Printf("\r%8.0f m, %s\n", minDist, absFileName)
-	} else {
-		if minDist <= *dist {
-			fmt.Printf("\r%8.0f m, %s\n", minDist, absFileName)
-		} else if globMinDist > minDist {
-			globMinDist = minDist
-			globAbsFileName = absFileName
-		}
 	}
+
+	if minDist <= *dist {
+		if globInnerMinDist > minDist {
+			globInnerMinDist = minDist
+			globInnerMinDistAbsFileName = absFileName
+		}
+		fmt.Printf("\r%8.0f m, %s\n", minDist, absFileName)
+	} else if globOuterMinDist > minDist {
+		globOuterMinDist = minDist
+		globOuterMinDistAbsFileName = absFileName
+	}
+
 	if *parallel {
 		finished++
 		printState(finished, total)
@@ -67,7 +77,8 @@ func scan(file string) {
 }
 
 func printState(index int, total int) {
-	fmt.Print("\r", strconv.Itoa(int(math.Round(float64(index)/float64(total)*100.0))), "% scanning...")
+	fmt.Print("\r")
+	fmt.Print(strconv.Itoa(int(math.Round(float64(index)/float64(total)*100.0))), "% scanning...")
 }
 
 func main() {
@@ -76,7 +87,7 @@ func main() {
 	lon := flag.Float64("lon", 0, "longitude of target (East to West)")
 	dist = flag.Float64("dist", 1000, "distance between target and waypoint in meters")
 	root := flag.String("path", ".", "path containing the gpx files (from the executable)")
-	parallel = flag.Bool("parallel", true, "parallel mode (faster, but this eats up your hardware!)")
+	parallel = flag.Bool("parallel", false, "parallel mode (faster, but this eats up your hardware!)")
 	debug = flag.Bool("debug", false, "debug mode (print out all file distances)")
 
 	flag.Parse()
@@ -134,11 +145,16 @@ func main() {
 
 	fmt.Print("\r")
 
-	if !(*debug) && globMinDist != math.MaxFloat64 {
-
-		fmt.Println("\n\nNearest out of dist was:")
-		fmt.Printf("%8.0f m, %s", globMinDist, globAbsFileName)
-
+	if globInnerMinDist <= math.MaxFloat64 {
+		fmt.Println("\n\nNearest in dist was:")
+		fmt.Printf("%8.0f m, %s\n", globInnerMinDist, globInnerMinDistAbsFileName)
 	}
+
+	if globOuterMinDist <= math.MaxFloat64 {
+		fmt.Println("\n\nNearest out of dist was:")
+		fmt.Printf("%8.0f m, %s\n", globOuterMinDist, globOuterMinDistAbsFileName)
+	}
+
+	fmt.Println("\nDone.")
 
 }
